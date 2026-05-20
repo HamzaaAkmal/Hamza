@@ -1,4 +1,4 @@
-# CrisisX AI THackathon Documentation
+# CrisisX AI Hackathon Documentation
 
 ## 1. Project Overview
 
