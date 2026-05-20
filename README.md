@@ -216,7 +216,7 @@ sequenceDiagram
 | Backend | Supabase Edge Functions (Deno) | Agent pipeline and tool execution |
 | Database | Supabase Postgres | Crisis data, logs, and simulation artifacts |
 | Realtime | Supabase Realtime WebSocket | Live updates in the app |
-| AI Model | Groq OpenAI-compatible API (Llama 3.3 70B) | Agent reasoning and structured outputs |
+| AI Model | Groq OpenAI-compatible API, (Kimi K2.6) as primary and (Llama 3.3 70B) as Fallback Agent | Agent reasoning and structured outputs |
 | External APIs | Google Geocoding, Google Routes, OpenWeather, Exa Search | Context and evidence enrichment |
 
 ## 5. APIs and Integrations
