@@ -2,10 +2,15 @@ import SwiftUI
 
 struct LiveCrisisMapScreen: View {
     @EnvironmentObject private var app: AppModel
-    @State private var skeletonDeadlinePassed = false
 
     private var showSkeleton: Bool {
-        app.repository.isLoading && !app.repository.hasLoadedOnce && !skeletonDeadlinePassed
+        app.repository.isLoading && !app.repository.hasLoadedOnce && !hasDashboardData
+    }
+
+    private var hasDashboardData: Bool {
+        !app.repository.incidents.isEmpty ||
+        !app.repository.signals.isEmpty ||
+        !app.repository.actions.isEmpty
     }
 
     var body: some View {
@@ -21,7 +26,7 @@ struct LiveCrisisMapScreen: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("CrisisAI")
+                        Text("CrisisX")
                             .font(.title3.bold())
                             .foregroundStyle(AppTheme.ink)
                         Text("Live Crisis Map")
@@ -29,7 +34,7 @@ struct LiveCrisisMapScreen: View {
                             .foregroundStyle(AppTheme.muted)
                     }
                     Spacer()
-                    StatusPill(status: app.realtime.isConnected ? "live" : "connecting")
+                    StatusPill(status: app.repository.isShowingCachedData ? "cached" : (app.realtime.isConnected ? "live" : "connecting"))
                 }
 
                 HStack(spacing: 10) {
@@ -44,10 +49,18 @@ struct LiveCrisisMapScreen: View {
                     }
                 }
 
-                if let error = app.repository.lastError {
+                if (app.repository.isRefreshing || app.repository.isShowingCachedData) && !hasDashboardData {
+                    SyncStatusBanner(
+                        isRefreshing: app.repository.isRefreshing,
+                        isCached: app.repository.isShowingCachedData,
+                        message: syncMessage
+                    )
+                }
+
+                if let error = app.repository.lastError, !hasDashboardData && !showSkeleton {
                     EmptyState(
                         icon: "exclamationmark.triangle.fill",
-                        title: "Supabase sync failed",
+                        title: "Waiting for safe refresh",
                         message: error
                     )
                     .padding(.vertical, 4)
@@ -85,24 +98,34 @@ struct LiveCrisisMapScreen: View {
             .padding(.bottom, 10)
         }
         .task {
-            skeletonDeadlinePassed = false
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                skeletonDeadlinePassed = true
-            }
             if app.repository.incidents.isEmpty && app.repository.signals.isEmpty {
                 await app.repository.loadAll()
             }
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await app.repository.loadAll() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                if app.repository.isRefreshing {
+                    ProgressView()
+                        .tint(AppTheme.blue)
+                } else {
+                    Button {
+                        Task { await app.repository.loadAll() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
             }
         }
+    }
+
+    private var syncMessage: String {
+        if app.repository.isShowingCachedData {
+            if let savedAt = app.repository.lastCacheSavedAt {
+                return "Showing local cache from \(savedAt.shortRelative) while Supabase verifies fresh data."
+            }
+            return "Showing local cache while Supabase verifies fresh data."
+        }
+        return "Refreshing Supabase data safely."
     }
 }
 

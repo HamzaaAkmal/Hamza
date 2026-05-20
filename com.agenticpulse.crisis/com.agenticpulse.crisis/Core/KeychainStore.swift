@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 final class KeychainStore {
-    private let service = "CrisisAI.SupabaseSession"
+    private let service = "CrisisX.SupabaseSession"
 
     func save(_ data: Data, account: String) throws {
         let query: [String: Any] = [

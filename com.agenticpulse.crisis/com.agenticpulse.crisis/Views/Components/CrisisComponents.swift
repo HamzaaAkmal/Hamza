@@ -45,6 +45,7 @@ struct StatusPill: View {
 
     private var color: Color {
         if status.contains("fail") || status.contains("offline") { return AppTheme.danger }
+        if status.contains("cached") { return AppTheme.warning }
         if status.contains("running") || status.contains("progress") || status.contains("queued") { return AppTheme.warning }
         if status.contains("completed") || status.contains("healthy") || status.contains("active") || status.contains("ready") { return AppTheme.success }
         return AppTheme.blue
@@ -97,28 +98,49 @@ struct BottomSystemBar: View {
     let error: String?
 
     var body: some View {
-        if isRunning || error != nil {
+        if let error {
             HStack(spacing: 10) {
-                if isRunning {
-                    ProgressView()
-                        .tint(AppTheme.blue)
-                    Text("Agent pipeline running")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                } else if let error {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppTheme.warning)
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.ink)
-                        .lineLimit(2)
-                }
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(AppTheme.warning)
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
                 Spacer()
             }
             .padding(14)
             .background(.white)
             .overlay(Rectangle().fill(AppTheme.line).frame(height: 1), alignment: .top)
         }
+    }
+}
+
+struct SyncStatusBanner: View {
+    let isRefreshing: Bool
+    let isCached: Bool
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isRefreshing {
+                ProgressView()
+                    .tint(AppTheme.blue)
+            } else {
+                Image(systemName: isCached ? "externaldrive.badge.clock" : "checkmark.icloud.fill")
+                    .foregroundStyle(isCached ? AppTheme.warning : AppTheme.success)
+            }
+
+            Text(message)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background((isCached ? AppTheme.warning : AppTheme.blue).opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

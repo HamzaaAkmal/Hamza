@@ -103,6 +103,25 @@ private struct AgentLogRow: View {
                         .foregroundStyle(AppTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let confirmationId {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Confirmation \(confirmationId)", systemImage: "checkmark.seal.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.success)
+                        if let selectedName {
+                            Label(selectedName, systemImage: "person.2.badge.gearshape.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppTheme.blue)
+                        }
+                        if let selectionReason {
+                            Text(selectionReason)
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
                 if let error = log.error {
                     Text(error)
                         .font(.caption)
@@ -113,6 +132,18 @@ private struct AgentLogRow: View {
         }
         .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
         .ciroCard()
+    }
+
+    private var confirmationId: String? {
+        log.outputPayload["booking_confirmation_id"]?.stringValue
+    }
+
+    private var selectedName: String? {
+        log.outputPayload["selected_provider"]?.objectValue?["name"]?.stringValue
+    }
+
+    private var selectionReason: String? {
+        log.outputPayload["selection_reason"]?.stringValue
     }
 
     private var color: Color {
@@ -129,6 +160,7 @@ private struct AgentLogRow: View {
         case let name where name.contains("Geo"): return "mappin.and.ellipse"
         case let name where name.contains("Evidence"): return "magnifyingglass"
         case let name where name.contains("Severity"): return "gauge.with.dots.needle.67percent"
+        case let name where name.contains("Booking"): return "checkmark.seal.fill"
         case let name where name.contains("Simulation"): return "play.rectangle.fill"
         case let name where name.contains("Trace"): return "list.clipboard.fill"
         default: return "cpu.fill"

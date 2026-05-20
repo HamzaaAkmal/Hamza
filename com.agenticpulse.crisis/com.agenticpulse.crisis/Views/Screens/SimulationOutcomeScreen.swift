@@ -29,6 +29,7 @@ struct SimulationOutcomeScreen: View {
                     .disabled(app.repository.hasActiveAgentRuns)
                     .padding(.horizontal)
 
+                    bookingSection(incident)
                     metricsSection(incident)
                     routeSection(incident)
                     alertsSection(incident)
@@ -47,6 +48,31 @@ struct SimulationOutcomeScreen: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+            }
+        }
+    }
+
+    private func bookingSection(_ incident: Incident) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Provider Booking")
+                .font(.headline)
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal)
+
+            let bookingTickets = app.repository.tickets(for: incident)
+                .filter { $0.payload["booking_confirmation_id"]?.stringValue != nil }
+                .sorted { $0.createdAt > $1.createdAt }
+
+            if let ticket = bookingTickets.first {
+                ProviderBookingCard(ticket: ticket)
+                    .padding(.horizontal)
+            } else {
+                EmptyState(
+                    icon: "person.2.badge.gearshape",
+                    title: "Provider booking pending",
+                    message: "The Simulation Agent ranks three mock providers and writes a safe dispatch confirmation here."
+                )
+                .padding(.horizontal)
             }
         }
     }
@@ -166,6 +192,127 @@ struct SimulationOutcomeScreen: View {
                 }
             }
         }
+    }
+}
+
+private struct ProviderBookingCard: View {
+    let ticket: EmergencyTicket
+
+    private var confirmationId: String {
+        ticket.payload["booking_confirmation_id"]?.stringValue ?? ticket.externalRef
+    }
+
+    private var selectedProvider: [String: JSONValue] {
+        ticket.payload["selected_provider"]?.objectValue ?? [:]
+    }
+
+    private var rankedProviders: [[String: JSONValue]] {
+        ticket.payload["ranked_providers"]?.arrayValue?
+            .compactMap(\.objectValue)
+            .prefix(3)
+            .map { $0 } ?? []
+    }
+
+    private var selectionReason: String {
+        ticket.payload["selection_reason"]?.stringValue ?? ticket.details ?? "Top provider selected from simulated ranking."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.success)
+                    .frame(width: 34, height: 34)
+                    .background(AppTheme.success.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(selectedProvider["name"]?.stringValue ?? ticket.summary)
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Confirmation \(confirmationId)")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.blue)
+                    Text(selectionReason)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                StatusPill(status: ticket.status)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(Array(rankedProviders.enumerated()), id: \.offset) { _, provider in
+                    ProviderRankRow(provider: provider)
+                }
+            }
+        }
+        .ciroCard()
+    }
+}
+
+private struct ProviderRankRow: View {
+    let provider: [String: JSONValue]
+
+    private var rank: Int {
+        Int(provider["rank"]?.doubleValue ?? 0)
+    }
+
+    private var etaText: String {
+        guard let seconds = provider["eta_seconds"]?.doubleValue else { return "ETA n/a" }
+        return "\(max(1, Int(seconds / 60))) min"
+    }
+
+    private var distanceText: String {
+        guard let meters = provider["distance_meters"]?.doubleValue else { return "distance n/a" }
+        return String(format: "%.1f km", meters / 1000)
+    }
+
+    private var scoreText: String {
+        guard let score = provider["total_score"]?.doubleValue else { return "n/a" }
+        return String(format: "%.2f", score)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("#\(rank)")
+                .font(.caption.bold())
+                .foregroundStyle(rank == 1 ? .white : AppTheme.blue)
+                .frame(width: 34, height: 26)
+                .background(rank == 1 ? AppTheme.blue : AppTheme.blue.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(provider["name"]?.stringValue ?? "Mock provider")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppTheme.ink)
+                Text([etaText, distanceText, provider["status"]?.stringValue?.replacingOccurrences(of: "_", with: " ")].compactMap { $0 }.joined(separator: " • "))
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+                if let rationale = provider["rationale"]?.stringValue {
+                    Text(rationale)
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(scoreText)
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.blue)
+                Text("score")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.muted)
+            }
+        }
+        .padding(10)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

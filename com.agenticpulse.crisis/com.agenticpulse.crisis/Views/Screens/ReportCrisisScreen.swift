@@ -118,7 +118,7 @@ struct ReportCrisisScreen: View {
                             .multilineTextAlignment(.center)
                     }
 
-                    Text("CrisisAI stores the report as a live signal, then backend agents enrich it with configured APIs and write every decision to Supabase.")
+                    Text("CrisisX stores the report as a live signal, then backend agents enrich it with configured APIs and write every decision to Supabase.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.muted)
                         .multilineTextAlignment(.center)

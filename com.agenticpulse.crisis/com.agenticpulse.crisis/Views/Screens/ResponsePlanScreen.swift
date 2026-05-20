@@ -77,6 +77,16 @@ private struct ActionRow: View {
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let assignedTo = action.assignedTo {
+                        Label(assignedTo, systemImage: "person.crop.circle.badge.checkmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.blue)
+                    }
+                    if let confirmationId {
+                        Label(confirmationId, systemImage: "checkmark.seal.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.success)
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
@@ -106,6 +116,10 @@ private struct ActionRow: View {
         }
         .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
         .ciroCard()
+    }
+
+    private var confirmationId: String? {
+        action.payload["booking_confirmation_id"]?.stringValue
     }
 
     private var icon: String {

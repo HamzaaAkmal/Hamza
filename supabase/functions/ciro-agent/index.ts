@@ -388,7 +388,7 @@ const toolDefinitions = [
     type: "function",
     function: {
       name: "run_simulation",
-      description: "Execute app-owned mock response execution in Supabase: route layer changes, resource assignments, and before-vs-after metrics only.",
+      description: "Execute app-owned mock response execution in Supabase: route layer changes, ranked mock provider booking, resource assignments, and before-vs-after metrics only.",
       parameters: {
         type: "object",
         properties: {
@@ -901,6 +901,315 @@ async function upsertIncident(admin: SupabaseClient, args: Json): Promise<Json> 
   return data as Json;
 }
 
+const PROVIDER_BOOKING_SEED = "crisisx_provider_booking_v1";
+
+function preferredResourceTypes(category: string): string[] {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("fire")) return ["fire_unit_mock", "medical_team_mock", "police_unit_mock"];
+  if (normalized.includes("medical")) return ["ambulance_mock", "medical_team_mock", "relief_team_mock"];
+  if (normalized.includes("traffic") || normalized.includes("infrastructure")) return ["road_crew_mock", "police_unit_mock", "ambulance_mock"];
+  if (normalized.includes("violence")) return ["police_unit_mock", "ambulance_mock", "relief_team_mock"];
+  if (normalized.includes("flood") || normalized.includes("weather") || normalized.includes("environment")) {
+    return ["relief_team_mock", "road_crew_mock", "medical_team_mock"];
+  }
+  return ["relief_team_mock", "ambulance_mock", "road_crew_mock"];
+}
+
+function providerTemplatesForIncident(incident: Json): Json[] {
+  const category = stringOrDefault(incident.category, "unknown").toLowerCase();
+  const incidentId = String(incident.id);
+  const lat = Number.isFinite(Number(incident.centroid_lat)) ? Number(incident.centroid_lat) : 31.5204;
+  const lng = Number.isFinite(Number(incident.centroid_lng)) ? Number(incident.centroid_lng) : 74.3587;
+  const types = preferredResourceTypes(category);
+  const baseSpecialties = Array.from(new Set([category, "triage", "field_verification"]));
+
+  return [
+    {
+      name: "RapidAid Alpha Response",
+      resource_type: types[0],
+      home_lat: lat - 0.010,
+      home_lng: lng - 0.008,
+      current_lat: lat - 0.010,
+      current_lng: lng - 0.008,
+      capacity: 4,
+      metadata: {
+        demo_seed: PROVIDER_BOOKING_SEED,
+        seed_key: `${PROVIDER_BOOKING_SEED}:${incidentId}:alpha`,
+        incident_id: incidentId,
+        readiness_score: 0.96,
+        average_speed_kph: 52,
+        specialties: baseSpecialties,
+      },
+    },
+    {
+      name: "MetroLink Dispatch Unit",
+      resource_type: types[1],
+      home_lat: lat + 0.018,
+      home_lng: lng + 0.012,
+      current_lat: lat + 0.018,
+      current_lng: lng + 0.012,
+      capacity: 3,
+      metadata: {
+        demo_seed: PROVIDER_BOOKING_SEED,
+        seed_key: `${PROVIDER_BOOKING_SEED}:${incidentId}:metro`,
+        incident_id: incidentId,
+        readiness_score: 0.88,
+        average_speed_kph: 46,
+        specialties: Array.from(new Set([category, "reroute", "public_guidance"])),
+      },
+    },
+    {
+      name: "CivicShield Support Team",
+      resource_type: types[2],
+      home_lat: lat - 0.024,
+      home_lng: lng + 0.019,
+      current_lat: lat - 0.024,
+      current_lng: lng + 0.019,
+      capacity: 5,
+      metadata: {
+        demo_seed: PROVIDER_BOOKING_SEED,
+        seed_key: `${PROVIDER_BOOKING_SEED}:${incidentId}:civic`,
+        incident_id: incidentId,
+        readiness_score: 0.80,
+        average_speed_kph: 42,
+        specialties: Array.from(new Set([category, "shelter", "relief"])),
+      },
+    },
+  ];
+}
+
+function metadataFor(resource: Json): Json {
+  return asObject(resource.metadata);
+}
+
+async function ensureMockProviders(ctx: AgentContext, incident: Json): Promise<Json[]> {
+  const templates = providerTemplatesForIncident(incident);
+  const seedKeys = new Set(templates.map((item) => String(asObject(item.metadata).seed_key)));
+  const incidentId = String(incident.id);
+
+  const { data: existingRows, error: existingError } = await ctx.admin
+    .from("resources")
+    .select("*")
+    .limit(200);
+  if (existingError) throw new Error(`Failed to inspect mock providers: ${existingError.message}`);
+
+  const existing = asArray<Json>(existingRows).filter((row) => {
+    const metadata = metadataFor(row);
+    return metadata.demo_seed === PROVIDER_BOOKING_SEED &&
+      metadata.incident_id === incidentId &&
+      seedKeys.has(String(metadata.seed_key));
+  });
+  const existingKeys = new Set(existing.map((row) => String(metadataFor(row).seed_key)));
+  const missing = templates.filter((template) => !existingKeys.has(String(asObject(template.metadata).seed_key)));
+
+  if (missing.length > 0) {
+    const { error: insertError } = await ctx.admin.from("resources").insert(missing.map((template) => ({
+      name: String(template.name),
+      resource_type: String(template.resource_type),
+      status: "available",
+      home_lat: numberOrUndefined(template.home_lat),
+      home_lng: numberOrUndefined(template.home_lng),
+      current_lat: numberOrUndefined(template.current_lat),
+      current_lng: numberOrUndefined(template.current_lng),
+      capacity: clamp(Math.round(Number(template.capacity ?? 1)), 1, 20),
+      assigned_incident_id: null,
+      metadata: asObject(template.metadata),
+    })));
+    if (insertError) throw new Error(`Failed to seed mock providers: ${insertError.message}`);
+  }
+
+  const { data: refreshedRows, error: refreshedError } = await ctx.admin
+    .from("resources")
+    .select("*")
+    .limit(200);
+  if (refreshedError) throw new Error(`Failed to load mock providers: ${refreshedError.message}`);
+
+  return asArray<Json>(refreshedRows)
+    .filter((row) => {
+      const metadata = metadataFor(row);
+      return metadata.demo_seed === PROVIDER_BOOKING_SEED &&
+        metadata.incident_id === incidentId &&
+        seedKeys.has(String(metadata.seed_key));
+    })
+    .slice(0, 3);
+}
+
+function fitScoreFor(resource: Json, category: string): number {
+  const normalized = category.toLowerCase();
+  const metadata = metadataFor(resource);
+  const specialties = asArray<string>(metadata.specialties).map((item) => item.toLowerCase());
+  if (specialties.includes(normalized)) return 1;
+
+  const resourceType = String(resource.resource_type ?? "");
+  const preferred = preferredResourceTypes(normalized);
+  const index = preferred.indexOf(resourceType);
+  if (index === 0) return 0.92;
+  if (index === 1) return 0.78;
+  if (index === 2) return 0.66;
+  return 0.45;
+}
+
+function rankMockProviders(incident: Json, providers: Json[]): Json[] {
+  const category = stringOrDefault(incident.category, "unknown");
+  const lat = Number.isFinite(Number(incident.centroid_lat)) ? Number(incident.centroid_lat) : 31.5204;
+  const lng = Number.isFinite(Number(incident.centroid_lng)) ? Number(incident.centroid_lng) : 74.3587;
+  const incidentId = String(incident.id);
+
+  const ranked = providers.map((resource) => {
+    const metadata = metadataFor(resource);
+    const resourceLat = Number(resource.current_lat ?? resource.home_lat ?? lat);
+    const resourceLng = Number(resource.current_lng ?? resource.home_lng ?? lng);
+    const distanceMeters = Number.isFinite(resourceLat) && Number.isFinite(resourceLng)
+      ? Math.round(haversineMeters(lat, lng, resourceLat, resourceLng))
+      : 99999;
+    const speedKph = clamp(Number(metadata.average_speed_kph ?? 42), 20, 80);
+    const readinessScore = clamp(Number(metadata.readiness_score ?? 0.75), 0.25, 1);
+    const etaSeconds = Math.round(distanceMeters / (speedKph * 1000 / 3600) + (1 - readinessScore) * 240);
+    const isAvailable = resource.status === "available";
+    const assignedHere = resource.assigned_incident_id === incidentId;
+    const availabilityScore = isAvailable ? 1 : assignedHere ? 0.55 : 0.12;
+    const capacityScore = clamp(Number(resource.capacity ?? 1) / 5, 0.2, 1);
+    const fitScore = fitScoreFor(resource, category);
+    const distanceScore = clamp(1 - distanceMeters / 14000, 0.05, 1);
+    const etaScore = clamp(1 - etaSeconds / 1800, 0.05, 1);
+    const totalScore = Math.round(100 * (0.32 * etaScore + 0.24 * distanceScore + 0.18 * availabilityScore + 0.14 * capacityScore + 0.12 * fitScore)) / 100;
+
+    return {
+      resource_id: resource.id,
+      name: resource.name,
+      resource_type: resource.resource_type,
+      status: resource.status,
+      capacity: resource.capacity,
+      distance_meters: distanceMeters,
+      eta_seconds: etaSeconds,
+      availability_score: Math.round(availabilityScore * 100) / 100,
+      capacity_score: Math.round(capacityScore * 100) / 100,
+      fit_score: Math.round(fitScore * 100) / 100,
+      total_score: totalScore,
+      rationale: `${Math.max(1, Math.round(etaSeconds / 60))} min ETA, ${Math.round(distanceMeters / 100) / 10} km away, ${isAvailable ? "available" : assignedHere ? "already assigned here" : "not currently available"}, capacity ${resource.capacity ?? 1}, crisis-fit ${Math.round(fitScore * 100)}%.`,
+    };
+  });
+
+  return ranked
+    .sort((a, b) => Number(b.total_score) - Number(a.total_score))
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
+async function createProviderBooking(ctx: AgentContext, incident: Json, simulationRunId: string, actions: unknown[]): Promise<Json> {
+  const incidentId = String(incident.id);
+  const providers = await ensureMockProviders(ctx, incident);
+  if (providers.length < 3) throw new Error("Provider booking requires three mock providers");
+
+  const rankedProviders = rankMockProviders(incident, providers);
+  const selected = rankedProviders.find((provider) => provider.status === "available") ?? rankedProviders[0];
+  const selectedResource = providers.find((resource) => resource.id === selected.resource_id) ?? providers[0];
+  const confirmationId = `CRISISX-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  const criteria = {
+    eta_weight: 0.32,
+    distance_weight: 0.24,
+    availability_weight: 0.18,
+    capacity_weight: 0.14,
+    crisis_type_fit_weight: 0.12,
+  };
+  const selectionReason = `Selected ${selected.name} because it had the best combined score across ETA, distance, availability, capacity, and ${incident.category ?? "crisis"} fit. ${selected.rationale}`;
+
+  const updatedMetadata = {
+    ...metadataFor(selectedResource),
+    last_booking: {
+      confirmation_id: confirmationId,
+      incident_id: incidentId,
+      simulation_run_id: simulationRunId,
+      selected_at: new Date().toISOString(),
+      selected_rank: selected.rank,
+      selected_score: selected.total_score,
+    },
+  };
+
+  const { error: resourceError } = await ctx.admin
+    .from("resources")
+    .update({
+      status: "assigned_mock",
+      assigned_incident_id: incidentId,
+      metadata: updatedMetadata,
+    })
+    .eq("id", String(selected.resource_id));
+  if (resourceError) throw new Error(`Failed to assign mock provider: ${resourceError.message}`);
+
+  const bookingPayload = {
+    booking_confirmation_id: confirmationId,
+    selected_provider: selected,
+    ranked_providers: rankedProviders,
+    ranking_criteria: criteria,
+    selection_reason: selectionReason,
+    simulated_only: true,
+    real_services_contacted: false,
+  };
+
+  const { data: action, error: actionError } = await ctx.admin
+    .from("response_actions")
+    .insert({
+      incident_id: incidentId,
+      action_type: "assign_resource",
+      title: `Book mock provider: ${selected.name}`,
+      description: selectionReason,
+      priority: clamp(Math.round(Number(incident.severity ?? 3)), 1, 5),
+      status: "ready",
+      assigned_to: String(selected.name),
+      payload: bookingPayload,
+      created_by: ctx.userId,
+    })
+    .select("*")
+    .single();
+  if (actionError || !action) throw new Error(`Failed to create mock booking action: ${actionError?.message}`);
+
+  const { data: ticket, error: ticketError } = await ctx.admin
+    .from("emergency_tickets")
+    .insert({
+      incident_id: incidentId,
+      simulation_run_id: simulationRunId,
+      external_ref: confirmationId,
+      ticket_type: "mock_provider_booking",
+      priority: clamp(Math.round(Number(incident.severity ?? 3)), 1, 5),
+      status: "assigned_mock",
+      summary: `Mock dispatch booked: ${selected.name}`,
+      details: selectionReason,
+      payload: {
+        ...bookingPayload,
+        response_action_id: action.id,
+        action_count_considered: actions.length,
+      },
+    })
+    .select("*")
+    .single();
+  if (ticketError || !ticket) throw new Error(`Failed to create mock booking ticket: ${ticketError?.message}`);
+
+  const output = {
+    booking_confirmation_id: confirmationId,
+    selected_provider: selected,
+    ranked_providers: rankedProviders,
+    ranking_criteria: criteria,
+    selection_reason: selectionReason,
+    response_action_id: action.id,
+    emergency_ticket_id: ticket.id,
+    simulated_only: true,
+  };
+
+  await ctx.admin.from("agent_logs").insert({
+    agent_run_id: ctx.runId,
+    agent_name: "Provider Booking Agent",
+    step: "rank_and_book_mock_provider",
+    status: "completed",
+    message: `Booked ${selected.name} with confirmation ${confirmationId} after ranking three mock providers.`,
+    input_payload: { incident_id: incidentId, simulation_run_id: simulationRunId, criteria },
+    output_payload: output,
+    confidence: 0.91,
+    started_at: new Date().toISOString(),
+    completed_at: new Date().toISOString(),
+  });
+
+  return output;
+}
+
 async function createSimulation(ctx: AgentContext, incidentId: string, scenario: string, actions: unknown[]): Promise<Json> {
   const { data: incident, error: incidentError } = await ctx.admin
     .from("incidents")
@@ -978,6 +1287,24 @@ async function createSimulation(ctx: AgentContext, incidentId: string, scenario:
     });
   }
 
+  let providerBooking: Json = { status: "skipped" };
+  try {
+    providerBooking = await createProviderBooking(ctx, incident as Json, String(run.id), actions);
+  } catch (error) {
+    providerBooking = {
+      status: "booking_failed",
+      error: error instanceof Error ? error.message : String(error),
+      simulated_only: true,
+    };
+    await writeRecoveryAgentLog(
+      ctx,
+      "Provider Booking Agent",
+      "rank_and_book_mock_provider_recovery",
+      `Provider booking could not complete, but simulation metrics were preserved: ${providerBooking.error}`,
+      providerBooking,
+    );
+  }
+
   await ctx.admin
     .from("response_actions")
     .update({ status: "ready" })
@@ -992,6 +1319,7 @@ async function createSimulation(ctx: AgentContext, incidentId: string, scenario:
       output_payload: {
         estimated_population_exposure: { before: beforeExposure, after: afterExposure },
         estimated_response_eta_seconds: { before: beforeEta, after: afterEta },
+        provider_booking: providerBooking,
         simulated_only: true,
       },
     })
@@ -1002,6 +1330,7 @@ async function createSimulation(ctx: AgentContext, incidentId: string, scenario:
     status: "completed",
     estimated_population_exposure: { before: beforeExposure, after: afterExposure },
     estimated_response_eta_seconds: { before: beforeEta, after: afterEta },
+    provider_booking: providerBooking,
     simulated_only: true,
   };
 }

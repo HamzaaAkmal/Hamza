@@ -223,11 +223,11 @@ struct PipelineProgressSheet: View {
                         .buttonStyle(.bordered)
                         .tint(AppTheme.blue)
                     } else if isCurrentRunStale {
-                        Label("This step has not written a heartbeat for more than 2 minutes. CrisisAI will start a recovery run.", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                        Label("This step has not written a heartbeat for more than 2 minutes. CrisisX will start a recovery run.", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.warning)
                     } else if run == nil && heartbeatCount >= 3 {
-                        Label("No run row yet. CrisisAI will retry the orchestrator start.", systemImage: "clock.arrow.circlepath")
+                        Label("No run row yet. CrisisX will retry the orchestrator start.", systemImage: "clock.arrow.circlepath")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.blue)
                     }

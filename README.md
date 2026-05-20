@@ -6,7 +6,7 @@
 During disasters and emergency situations, people often struggle to access reliable and timely information. Reports from different sources can be confusing or unverified, leading to poor awareness and delayed decisions. This project provides a centralized platform that validates crisis-related information and helps improve public awareness and preparedness.
 
 ### Purpose of the solution
-CrisisAI provides a real-time, agentic crisis intelligence workflow that turns user or backend-generated signals into incidents, evidence, response actions, and simulation outcomes. It keeps all decisions and tool calls traceable in Supabase and streams updates live to the iOS client.
+CrisisX provides a real-time, agentic crisis intelligence workflow that turns user or backend-generated signals into incidents, evidence, response actions, and simulation outcomes. It keeps all decisions and tool calls traceable in Supabase and streams updates live to the iOS client.
 
 ### Real-world use case
 A crisis operations desk can collect public reports (English, Urdu, Roman Urdu), confirm context with weather and news sources, cluster nearby signals into incidents, and propose coordinated response actions. Operators review a full agent trace and simulated outcomes before any real-world escalation.
@@ -155,6 +155,7 @@ The Edge Function runs a deterministic pipeline with explicit logging:
 - Crisis report submission with category and urgency.
 - Live map visualization of signals, incidents, routes, and blocked segments.
 - Incident detail view with evidence, actions, trace, and simulation outcomes.
+- End-to-end mock provider booking: three app-owned emergency resources are ranked by ETA, distance, availability, capacity, and crisis-type fit; the top provider is assigned and a mock dispatch confirmation is written.
 - Backend-generated test signals and manual simulation triggers.
 
 ### Security implementation
@@ -178,6 +179,7 @@ The Edge Function runs a deterministic pipeline with explicit logging:
 
 ### Notifications and alerts
 - Alerts and tickets are simulated and stored in Supabase tables; no real dispatch.
+- Provider booking is simulated end-to-end: resources move from `available` to `assigned_mock`, and the confirmation ID plus ranking rationale are stored in `agent_logs`, `response_actions`, and `emergency_tickets`.
 
 ## 8. Technical Implementation Details
 
@@ -221,7 +223,6 @@ The Edge Function runs a deterministic pipeline with explicit logging:
 
 ## 11. Team Name
 - CrisisX AI
-  ## Team
 - Hamza Akmal
 - Abdullah Saif
 - Kamran Ashraf

@@ -34,8 +34,5 @@ struct MainShellView: View {
             }
         }
         .tint(AppTheme.blue)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomSystemBar(isRunning: app.repository.hasActiveAgentRuns, error: app.repository.lastError)
-        }
     }
 }

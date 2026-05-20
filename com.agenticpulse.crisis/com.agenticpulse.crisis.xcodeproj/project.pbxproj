@@ -11,7 +11,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		18E2C3302FB8FCAE005E6F05 /* CrisisAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrisisAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		18E2C3302FB8FCAE005E6F05 /* CrisisX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrisisX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000022FB9000000000001 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		A10000022FB9000000000003 /* AppInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = AppInfo.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -48,7 +48,7 @@
 		18E2C3312FB8FCAE005E6F05 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				18E2C3302FB8FCAE005E6F05 /* CrisisAI.app */,
+				18E2C3302FB8FCAE005E6F05 /* CrisisX.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -85,7 +85,7 @@
 				A10000012FB9000000000002 /* GoogleMaps */,
 			);
 			productName = com.agenticpulse.crisis;
-			productReference = 18E2C3302FB8FCAE005E6F05 /* CrisisAI.app */;
+			productReference = 18E2C3302FB8FCAE005E6F05 /* CrisisX.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -285,7 +285,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "downlabs.com-agenticpulse-crisis";
-				PRODUCT_NAME = CrisisAI;
+				PRODUCT_NAME = CrisisX;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -314,7 +314,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "downlabs.com-agenticpulse-crisis";
-				PRODUCT_NAME = CrisisAI;
+				PRODUCT_NAME = CrisisX;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
